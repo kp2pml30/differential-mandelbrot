@@ -7,108 +7,55 @@ uniform float B = -0.3;
 
 varying vec2 texCoord;
 
-// complex library
-vec2 cmul(vec2 a, vec2 b)
+vec4 getdiff(vec2 lambda, vec4 where, float t0)
 {
-	return vec2(a.x * b.x - a.y * b.y, a.y * b.x + a.x * b.y);
+	/*
+		 x1' = z1
+		 x2' = z2
+		 z1' = ...
+		 z2' = ...
+	 */
+	float fwt = FORCE * cos(B * t0);
+	float xd = where.x - where.y;
+	float xd2 = xd * xd;
+	vec2 where2 = where.xy * where.xy;
+	vec2 z12 = -GAMMA * where.zw - lambda + where2 + vec2(EPSILON * xd2 + fwt);
+	return vec4(where.zw, z12);
 }
 
-float cabs2(vec2 z)
+vec4 euler(vec2 lambda, vec4 start, float t0, float dt)
 {
-	return z.x * z.x + z.y * z.y;
+	vec4 res = getdiff(lambda, start, t0);
+	res *= dt;
+	return res;
 }
 
-float cabs(vec2 z)
+vec4 rungeKutta(vec2 lambda, vec4 start, float t0, float dt)
 {
-	return sqrt(cabs2(z));
+	vec4 k1 = getdiff(lambda, start, t0);
+	vec4 k2 = getdiff(lambda, start + k1 * (dt / 2), t0 + dt / 2);
+	vec4 k3 = getdiff(lambda, start + k2 * (dt / 2), t0 + dt / 2);
+	vec4 k4 = getdiff(lambda, start + k3 * dt, t0 + dt);
+	k2 *= 2;
+	k3 *= 2;
+	k1 += k2;
+	k1 += k3;
+	k1 += k4;
+	k1 /= 6;
+	return k1;
 }
 
-vec2 cexp(vec2 z)
+float hardMandelbrot(vec2 lambda)
 {
-	return exp(z.x) * vec2(cos(z.y), sin(z.y));
-}
-
-float classicMandel(vec2 c)
-{
-	vec2 z = vec2(0);
-	for (int i = 0; i < 255; i++)
-		if (cabs2(z) > 4.0)
-			return float(i) / 255.0;
-		else
-			z = cmul(z, z) + c;
-	return 1.0;
-}
-
-vec2 conj(vec2 z)
-{
-	return vec2(z.x, -z.y);
-}
-
-vec2 cdiv(vec2 a, vec2 b)
-{
-	return cmul(a, conj(b)) / cabs2(b);
-}
-
-// diff mandelbrot part
-
-vec2 nextXiNu(vec2 lambda, vec2 xiNu, vec2 prevXiNu)
-{
-	float d = xiNu.x - xiNu.y;
-	float d2 = d * d;
-	vec2 xiNu2 = xiNu * xiNu;
-	return lambda - xiNu2 - B * prevXiNu + EPSILON * d2;
-}
-
-float nextY(vec2 lambda, vec2 xiNu, float t, float y, float prevY)
-{
-	float y2 = y * y;
-	float ymNu = y - xiNu.y;
-	float ymNu2 = ymNu * ymNu;
-
-	float nom = y2 - y * (2 + GAMMA) + lambda.x + prevY - EPSILON * ymNu2 - FORCE * cos(t);
-	float den = -(1 + GAMMA);
-	return nom / den;
-}
-
-float diffMandelbrot(vec2 lambda)
-{
-	float pY = 0;
-	float y = 0;
-	vec2 pXiNu = vec2(0);
-	vec2 xiNu = vec2(0);
-	float delta = 1.0 / 128.0;
-	for (float i = 0; i < 1.0; i += delta)
-	{
-		if (y > 2.5)
-			return i;
-		float nY = nextY(lambda, xiNu, i, y, pY);
-		vec2 nXiNu = nextXiNu(lambda, xiNu, pXiNu);
-		pXiNu = xiNu;
-		xiNu = nXiNu;
-		pY = y;
-		y = nY;
-	}
-	return 1.0;
-}
-
-vec2 nextX(vec2 lambda, vec2 x)
-{
-	vec2 x2 = x * x;
-	float xm = x.x - x.y;
-	float xm2 = xm * xm;
-	return lambda - x2 + vec2(EPSILON * xm2);
-}
-
-float simpleMandelbrot(vec2 lambda)
-{
-	vec2 x = vec2(0);
+	vec4 x = vec4(0);
 	float delta = 1.0 / 256.0;
 	for (float i = 0; i < 1.0; i += delta)
 	{
-		vec2 x2 = x * x;
+		vec2 x2 = x.xy * x.xy;
 		if (x2.x + x2.y > 16)
 			return i;
-		vec2 nx = nextX(lambda, x);
+		// vec4 nx = euler(lambda, x, i * 256.0, 1);
+		vec4 nx = rungeKutta(lambda, x, i * 256.0, 1);
 		x = nx;
 	}
 	return 1.0;
@@ -120,6 +67,6 @@ void main(void)
 	float m;
 	// m = classicMandel(c);
 	// m = diffMandelbrot(c);
-	m = simpleMandelbrot(c);
+	m = hardMandelbrot(c);
 	gl_FragColor = vec4(m / 2.0, 0.0, m, 1.0);
 }
